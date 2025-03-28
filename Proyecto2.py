@@ -1,197 +1,408 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
-from PIL import Image, ImageTk
+import random
+from PIL import Image, ImageTk 
+
+# ==================== CLASES DEL MODELO (TDA) ====================
+class Empresa:
+    def __init__(self, id_empresa, nombre, abreviatura):
+        self.id = id_empresa
+        self.nombre = nombre
+        self.abreviatura = abreviatura
+        self.puntos_atencion = []
+        self.transacciones = []
+
+class PuntoAtencion:
+    def __init__(self, id_punto, nombre, direccion):
+        self.id = id_punto
+        self.nombre = nombre
+        self.direccion = direccion
+        self.escritorios = []
+        self.clientes_en_espera = []
+        self.clientes_atendidos = []
+
+class EscritorioServicio:
+    def __init__(self, id_escritorio, identificacion, encargado):
+        self.id = id_escritorio
+        self.identificacion = identificacion
+        self.encargado = encargado
+        self.activo = False
+        self.cliente_actual = None
+        self.tiempo_restante = 0
+
+class Transaccion:
+    def __init__(self, id_transaccion, nombre, tiempo_atencion):
+        self.id = id_transaccion  # Ahora usar números (1, 2, 3...)
+        self.nombre = nombre
+        self.tiempo = tiempo_atencion
+
+class Cliente:
+    def __init__(self, dpi, nombre):
+        self.dpi = dpi
+        self.nombre = nombre
+        self.transacciones = []
+        self.tiempo_espera = 0
+        self.ticket = None
+
+# ==================== SISTEMA DE ATENCIÓN ====================
 import random
 
+class SistemaAtencion:
+    def __init__(self):
+        self.empresas = []
+        self.tickets_generados = set()
+
+    def generar_ticket_unico(self):
+        while True:
+            ticket = f"{random.randint(100, 999)}-{random.randint(1000, 9999)}"
+            if ticket not in self.tickets_generados:
+                self.tickets_generados.add(ticket)
+                return ticket
+
+    def agregar_empresa(self, empresa):
+        self.empresas.append(empresa)
+
+    def asignar_cliente(self, punto_atencion, cliente):
+        tiempo_total = sum(t.tiempo for t in cliente.transacciones)
+        cliente.tiempo_espera = tiempo_total
+        cliente.ticket = self.generar_ticket_unico()
+        punto_atencion.clientes_en_espera.append(cliente)
+        
+        # Tiempo estimado = tiempo de atención + (clientes en espera * 3 minutos)
+        tiempo_espera = tiempo_total + (len(punto_atencion.clientes_en_espera) - 1) * 3
+        return cliente.ticket, tiempo_espera, tiempo_total
+
+    def activar_escritorio(self, escritorio):
+        if not escritorio.activo and escritorio.punto_atencion.clientes_en_espera:
+            escritorio.activo = True
+            escritorio.cliente_actual = escritorio.punto_atencion.clientes_en_espera.pop(0)
+            escritorio.tiempo_restante = sum(t.tiempo for t in escritorio.cliente_actual.transacciones)
+            return True
+        return False
+    
+
+# ==================== INTERFAZ GRÁFICA ====================
 class MobileAppSimulator:
     def __init__(self, root):
         self.root = root
-        self.root.title("Sistema de Atención a Clientes")
-        self.root.geometry("360x640")  # Tamaño similar a un móvil
+        self.root.title("Sistema de Atención a Clientes - Versión 2")
+        self.root.geometry("360x640")
         self.root.resizable(False, False)
         
         # Paleta de colores morado pastel
-        self.bg_color = "#f0e6ff"  # Morado muy claro
-        self.primary_color = "#b399d4"  # Morado pastel
-        self.secondary_color = "#d9c2ff"  # Morado más claro
-        self.accent_color = "#8a6dae"  # Morado más oscuro
-        self.text_color = "#4a3b5f"  # Morado oscuro para texto
+        self.bg_color = "#f0e6ff"
+        self.primary_color = "#b399d4"
+        self.secondary_color = "#d9c2ff"
+        self.accent_color = "#8a6dae"
+        self.text_color = "#4a3b5f"
         
         # Configurar estilo
         self.style = ttk.Style()
         self.style.theme_use('clam')
+        self._configure_styles()
         
-        # Configurar colores para los widgets
+        # Sistema de atención
+        self.sistema = SistemaAtencion()
+        self._cargar_datos_ejemplo()
+        
+        # Variables de control
+        self.transaction_vars = {}  # Diccionario para manejar transacciones
+        
+        # Crear interfaz
+        self._create_widgets()
+
+    def _configure_styles(self):
+        """Configura los estilos de los widgets."""
         self.style.configure('TFrame', background=self.bg_color)
         self.style.configure('TLabel', background=self.bg_color, foreground=self.text_color)
-        self.style.configure('TButton', background=self.primary_color, foreground='white', 
-                            font=('Helvetica', 10, 'bold'), padding=10)
+        self.style.configure('TButton', 
+                          background=self.primary_color, 
+                          foreground='white', 
+                          font=('Helvetica', 10, 'bold'), 
+                          padding=10)
         self.style.map('TButton', 
-                      background=[('active', self.accent_color), ('pressed', self.accent_color)])
+                     background=[('active', self.accent_color), ('pressed', self.accent_color)])
+    def _cargar_datos_ejemplo(self):
+        """Carga datos iniciales para pruebas."""
+        empresa = Empresa("EMP-001", "Banco Industrial", "BI")
         
-        # Crear la interfaz
-        self.create_widgets()
+        # Puntos de atención
+        punto1 = PuntoAtencion("PT-001", "Centro Comercial Miraflores", "Zona 11")
+        punto2 = PuntoAtencion("PT-002", "Plaza Fontabella", "Zona 10")
+        empresa.puntos_atencion.extend([punto1, punto2])
         
-    def create_widgets(self):
+        # Escritorios
+        punto1.escritorios.append(EscritorioServicio("ES-001", "E1", "Juan Pérez"))
+        punto1.escritorios.append(EscritorioServicio("ES-002", "E2", "María Gómez"))
+        
+        # Transacciones (ahora con IDs numéricos para evitar el error)
+        transacciones = [
+            Transaccion(1, "Retiro de efectivo", 5),
+            Transaccion(2, "Depósito", 7),
+            Transaccion(3, "Consulta de saldo", 3),
+            Transaccion(4, "Pago de servicios", 10)
+        ]
+        empresa.transacciones.extend(transacciones)
+        
+        self.sistema.agregar_empresa(empresa)
+
+    def _create_widgets(self):
+        """Construye la interfaz gráfica."""
         # Frame principal
         self.main_frame = ttk.Frame(self.root)
         self.main_frame.pack(fill=tk.BOTH, expand=True)
         
         # Header
-        self.header_frame = ttk.Frame(self.main_frame, style='TFrame')
-        self.header_frame.pack(fill=tk.X, padx=10, pady=10)
-        
-        self.logo_label = ttk.Label(self.header_frame, text="Soluciones Guatemaltecas", 
-                                   font=('Helvetica', 16, 'bold'), style='TLabel')
-        self.logo_label.pack()
-        
-        self.subtitle_label = ttk.Label(self.header_frame, text="Sistema de Atención", 
-                                      font=('Helvetica', 12), style='TLabel')
-        self.subtitle_label.pack()
-        
-        # Separador
-        ttk.Separator(self.main_frame, orient=tk.HORIZONTAL).pack(fill=tk.X, padx=20, pady=5)
+        self._create_header()
         
         # Contenido principal
-        self.content_frame = ttk.Frame(self.main_frame, style='TFrame')
+        self.content_frame = ttk.Frame(self.main_frame)
         self.content_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=10)
         
-        # Selección de empresa
-        self.company_label = ttk.Label(self.content_frame, text="Seleccione la empresa:", 
-                                     font=('Helvetica', 12), style='TLabel')
-        self.company_label.pack(pady=(0, 5))
+        # Combobox para empresa y punto
+        self._create_selection_controls()
         
-        self.company_combo = ttk.Combobox(self.content_frame, values=["Banco Industrial", "Tigo", "Claro", "Municipalidad"])
-        self.company_combo.pack(fill=tk.X, pady=(0, 15))
-        
-        # Selección de punto de atención
-        self.point_label = ttk.Label(self.content_frame, text="Seleccione el punto de atención:", 
-                                   font=('Helvetica', 12), style='TLabel')
-        self.point_label.pack(pady=(0, 5))
-        
-        self.point_combo = ttk.Combobox(self.content_frame, values=["Centro Comercial Miraflores", "Plaza Fontabella", "Centro Histórico"])
-        self.point_combo.pack(fill=tk.X, pady=(0, 15))
-        
-        # Transacciones disponibles
-        self.transactions_label = ttk.Label(self.content_frame, text="Transacciones disponibles:", 
-                                          font=('Helvetica', 12), style='TLabel')
-        self.transactions_label.pack(pady=(0, 5))
-        
-        # Frame para checkbuttons
-        self.transactions_frame = ttk.Frame(self.content_frame, style='TFrame')
-        self.transactions_frame.pack(fill=tk.X)
-        
-        # Lista de transacciones (simuladas)
-        self.transactions = [
-            {"id": 1, "name": "Retiro de efectivo", "time": 5},
-            {"id": 2, "name": "Depósito", "time": 7},
-            {"id": 3, "name": "Consulta de saldo", "time": 3},
-            {"id": 4, "name": "Pago de servicios", "time": 10}
-        ]
-        
-        self.selected_transactions = []
-        self.check_vars = []
-        
-        for i, trans in enumerate(self.transactions):
-            var = tk.IntVar()
-            self.check_vars.append(var)
-            cb = tk.Checkbutton(self.transactions_frame, text=f"{trans['name']} ({trans['time']} min)", 
-                               variable=var, onvalue=trans['id'], offvalue=0,
-                               bg=self.bg_color, fg=self.text_color, selectcolor=self.secondary_color,
-                               activebackground=self.bg_color, activeforeground=self.text_color,
-                               font=('Helvetica', 10))
-            cb.pack(anchor=tk.W, pady=2)
+        # Checkboxes para transacciones
+        self._create_transaction_controls()
         
         # Botón de solicitud
-        self.request_button = ttk.Button(self.content_frame, text="Solicitar Atención", 
-                                       command=self.request_service)
+        self.request_button = ttk.Button(
+            self.content_frame, 
+            text="Solicitar Atención", 
+            command=self._handle_service_request
+        )
         self.request_button.pack(pady=20, fill=tk.X)
         
         # Footer
-        self.footer_frame = ttk.Frame(self.main_frame, style='TFrame')
-        self.footer_frame.pack(fill=tk.X, padx=10, pady=10)
+        self._create_footer()
+
+    def _create_header(self):
+        """Crea el encabezado de la aplicación."""
+        header_frame = ttk.Frame(self.main_frame)
+        header_frame.pack(fill=tk.X, padx=10, pady=10)
         
-        self.status_label = ttk.Label(self.footer_frame, text="Listo para solicitar atención", 
-                                    font=('Helvetica', 10), style='TLabel')
+        ttk.Label(
+            header_frame, 
+            text="Soluciones Guatemaltecas", 
+            font=('Helvetica', 16, 'bold')
+        ).pack()
+        
+        ttk.Label(
+            header_frame, 
+            text="Sistema de Atención - V2", 
+            font=('Helvetica', 12)
+        ).pack()
+        
+        ttk.Separator(self.main_frame, orient=tk.HORIZONTAL).pack(fill=tk.X, padx=20, pady=5)
+
+    def _create_selection_controls(self):
+        """Crea los controles para seleccionar empresa y punto."""
+        ttk.Label(
+            self.content_frame, 
+            text="Seleccione la empresa:", 
+            font=('Helvetica', 12)
+        ).pack(pady=(0, 5))
+        
+        self.company_combo = ttk.Combobox(
+            self.content_frame, 
+            values=[emp.nombre for emp in self.sistema.empresas]
+        )
+        self.company_combo.pack(fill=tk.X, pady=(0, 15))
+        
+        ttk.Label(
+            self.content_frame, 
+            text="Seleccione el punto de atención:", 
+            font=('Helvetica', 12)
+        ).pack(pady=(0, 5))
+        
+        self.point_combo = ttk.Combobox(
+            self.content_frame, 
+            values=[p.nombre for p in self.sistema.empresas[0].puntos_atencion]
+        )
+        self.point_combo.pack(fill=tk.X, pady=(0, 15))
+
+    def _create_transaction_controls(self):
+        """Crea los checkboxes para seleccionar transacciones."""
+        ttk.Label(
+            self.content_frame, 
+            text="Transacciones disponibles:", 
+            font=('Helvetica', 12)
+        ).pack(pady=(0, 5))
+        
+        transactions_frame = ttk.Frame(self.content_frame)
+        transactions_frame.pack(fill=tk.X)
+        
+        # Usamos un diccionario para mapear IDs a objetos Transaccion
+        self.transaction_vars = {}
+        for trans in self.sistema.empresas[0].transacciones:
+            var = tk.IntVar()
+            self.transaction_vars[trans.id] = (var, trans)
+            cb = tk.Checkbutton(
+                transactions_frame, 
+                text=f"{trans.nombre} ({trans.tiempo} min)", 
+                variable=var, 
+                onvalue=1,  # Usamos 1/0 en lugar de los IDs
+                offvalue=0,
+                bg=self.bg_color, 
+                fg=self.text_color, 
+                selectcolor=self.secondary_color,
+                font=('Helvetica', 10)
+            )
+            cb.pack(anchor=tk.W, pady=2)
+
+    def _create_footer(self):
+        """Crea el pie de página con el estado."""
+        footer_frame = ttk.Frame(self.main_frame)
+        footer_frame.pack(fill=tk.X, padx=10, pady=10)
+        
+        self.status_label = ttk.Label(
+            footer_frame, 
+            text="Listo para solicitar atención", 
+            font=('Helvetica', 10)
+        )
         self.status_label.pack()
-        
-    def request_service(self):
+
+    def _handle_service_request(self):
+        """Maneja la solicitud de atención del cliente."""
         # Validar selecciones
-        company = self.company_combo.get()
-        point = self.point_combo.get()
-        
-        if not company or not point:
-            messagebox.showerror("Error", "Por favor seleccione una empresa y un punto de atención")
+        if not self._validate_selections():
             return
             
         # Obtener transacciones seleccionadas
-        selected = []
-        total_time = 0
-        for i, var in enumerate(self.check_vars):
-            if var.get() > 0:
-                selected.append(self.transactions[i])
-                total_time += self.transactions[i]['time']
-                
-        if not selected:
-            messagebox.showerror("Error", "Por favor seleccione al menos una transacción")
+        selected_trans = self._get_selected_transactions()
+        if not selected_trans:
+            messagebox.showerror("Error", "Seleccione al menos una transacción")
             return
             
-        # Generar número de atención
-        ticket_number = f"{random.randint(100, 999)}-{random.randint(1000, 9999)}"
+        # Procesar solicitud
+        ticket, wait_time, service_time = self._process_client_request(selected_trans)
         
-        # Mostrar resultados en una nueva ventana
-        self.show_ticket(ticket_number, total_time)
+        # Mostrar ticket
+        self._show_ticket(ticket, wait_time, service_time)
+        self.status_label.config(text=f"Ticket {ticket} generado")
+
+    def _validate_selections(self):
+        """Valida que se hayan seleccionado empresa y punto."""
+        if not self.company_combo.get() or not self.point_combo.get():
+            messagebox.showerror("Error", "Seleccione empresa y punto de atención")
+            return False
+        return True
+
+    def _get_selected_transactions(self):
+        """Obtiene las transacciones seleccionadas usando el nuevo enfoque."""
+        selected = []
+        for trans_id, (var, trans) in self.transaction_vars.items():
+            if var.get() == 1:  # Verificamos si el checkbox está marcado
+                selected.append(trans)
+        return selected
+
+    def _process_client_request(self, transactions):
+        """Procesa la solicitud del cliente en el sistema."""
+        cliente = Cliente("123456789", "Cliente Ejemplo")
+        cliente.transacciones = transactions
         
-    def show_ticket(self, ticket_number, total_time):
-        # Crear ventana de ticket
+        punto = next(
+            p for p in self.sistema.empresas[0].puntos_atencion 
+            if p.nombre == self.point_combo.get()
+        )
+        
+        return self.sistema.asignar_cliente(punto, cliente)
+    
+    def _show_ticket(self, ticket, wait_time, service_time):
+        """Muestra el ticket de atención en una nueva ventana."""
         ticket_window = tk.Toplevel(self.root)
         ticket_window.title("Ticket de Atención")
         ticket_window.geometry("320x480")
         ticket_window.resizable(False, False)
         ticket_window.configure(bg=self.bg_color)
         
-        # Frame principal
-        ticket_frame = ttk.Frame(ticket_window, style='TFrame')
+        ticket_frame = ttk.Frame(ticket_window)
         ticket_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
         
-        # Logo
-        logo_label = ttk.Label(ticket_frame, text="Soluciones Guatemaltecas", 
-                             font=('Helvetica', 14, 'bold'), style='TLabel')
-        logo_label.pack(pady=(0, 10))
+        # Contenido del ticket
+        ttk.Label(
+            ticket_frame, 
+            text="Soluciones Guatemaltecas", 
+            font=('Helvetica', 14, 'bold')
+        ).pack(pady=(0, 10))
         
-        # Separador
         ttk.Separator(ticket_frame, orient=tk.HORIZONTAL).pack(fill=tk.X, pady=5)
         
-        # Información del ticket
-        ttk.Label(ticket_frame, text="Su número de atención es:", 
-                 font=('Helvetica', 12), style='TLabel').pack(pady=(10, 5))
+        ttk.Label(
+            ticket_frame, 
+            text="Su número de atención es:", 
+            font=('Helvetica', 12)
+        ).pack(pady=(10, 5))
         
-        ttk.Label(ticket_frame, text=ticket_number, 
-                 font=('Helvetica', 24, 'bold'), foreground=self.accent_color, 
-                 background=self.bg_color).pack(pady=(0, 20))
+        ttk.Label(
+            ticket_frame, 
+            text=ticket, 
+            font=('Helvetica', 24, 'bold'), 
+            foreground=self.accent_color
+        ).pack(pady=(0, 20))
         
-        ttk.Label(ticket_frame, text="Tiempo estimado de espera:", 
-                 font=('Helvetica', 12), style='TLabel').pack(pady=(10, 5))
+        # Tiempos estimados
+        time_labels = [
+            ("Tiempo estimado de espera:", wait_time),
+            ("Tiempo estimado de atención:", service_time)
+        ]
         
-        avg_wait = random.randint(5, 15)  # Simular tiempo de espera promedio
-        ttk.Label(ticket_frame, text=f"{avg_wait} minutos", 
-                 font=('Helvetica', 16), foreground=self.accent_color, 
-                 background=self.bg_color).pack(pady=(0, 10))
+        for label, time in time_labels:
+            ttk.Label(
+                ticket_frame, 
+                text=label, 
+                font=('Helvetica', 12)
+            ).pack(pady=(10, 5))
+            
+            ttk.Label(
+                ticket_frame, 
+                text=f"{time} minutos", 
+                font=('Helvetica', 16), 
+                foreground=self.accent_color
+            ).pack(pady=(0, 10))
         
-        ttk.Label(ticket_frame, text="Tiempo estimado de atención:", 
-                 font=('Helvetica', 12), style='TLabel').pack(pady=(10, 5))
+        ttk.Button(
+            ticket_frame, 
+            text="Cerrar", 
+            command=ticket_window.destroy
+        ).pack(pady=20, fill=tk.X)
+
+    def request_service(self):
+        # Validar selecciones
+        empresa_nombre = self.company_combo.get()
+        punto_nombre = self.point_combo.get()
         
-        ttk.Label(ticket_frame, text=f"{total_time} minutos", 
-                 font=('Helvetica', 16), foreground=self.accent_color, 
-                 background=self.bg_color).pack(pady=(0, 20))
+        if not empresa_nombre or not punto_nombre:
+            messagebox.showerror("Error", "Seleccione empresa y punto de atención")
+            return
+            
+        # Obtener transacciones seleccionadas
+        selected = []
+        for i, var in enumerate(self.check_vars):
+            if var.get() > 0:
+                trans = next(t for t in self.sistema.empresas[0].transacciones if t.id == var.get())
+                selected.append(trans)
+                
+        if not selected:
+            messagebox.showerror("Error", "Seleccione al menos una transacción")
+            return
+            
+        # Crear cliente
+        cliente = Cliente("123456789", "Cliente Ejemplo")
+        cliente.transacciones = selected
         
-        # Botón de cierre
-        close_button = ttk.Button(ticket_frame, text="Cerrar", 
-                                command=ticket_window.destroy)
-        close_button.pack(pady=20, fill=tk.X)
+        # Obtener punto de atención
+        empresa = self.sistema.empresas[0]  # Simplificado para ejemplo
+        punto = next(p for p in empresa.puntos_atencion if p.nombre == punto_nombre)
         
-        # Actualizar estado en la ventana principal
-        self.status_label.config(text=f"Ticket generado: {ticket_number}")
+        # Asignar cliente al sistema
+        ticket, tiempo_espera, tiempo_atencion = self.sistema.asignar_cliente(punto, cliente)
+        
+        # Mostrar ticket
+        self.show_ticket(ticket, tiempo_espera, tiempo_atencion)
+        
+        # Actualizar estado
+        self.status_label.config(text=f"Ticket {ticket} generado")
 
 if __name__ == "__main__":
     root = tk.Tk()
