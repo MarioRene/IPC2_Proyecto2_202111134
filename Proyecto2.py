@@ -1,7 +1,8 @@
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import ttk, messagebox, filedialog
 import random
-from PIL import Image, ImageTk 
+import xml.etree.ElementTree as ET
+from PIL import Image, ImageTk
 
 # ==================== CLASES DEL MODELO (TDA) ====================
 class Empresa:
@@ -45,7 +46,6 @@ class Cliente:
         self.ticket = None
 
 # ==================== SISTEMA DE ATENCIÓN ====================
-import random
 
 class SistemaAtencion:
     def __init__(self):
@@ -80,6 +80,101 @@ class SistemaAtencion:
             return True
         return False
     
+    def cargar_configuracion_xml(self, archivo):
+        try:
+            tree = ET.parse(archivo)
+            root = tree.getroot()
+            
+            for empresa_xml in root.findall('empresa'):
+                empresa = Empresa(
+                    empresa_xml.get('id'),
+                    empresa_xml.find('nombre').text.strip(),
+                    empresa_xml.find('abreviatura').text.strip()
+                )
+                
+                # Cargar puntos de atención
+                for punto_xml in empresa_xml.find('listaPuntosAtencion').findall('puntoAtencion'):
+                    punto = PuntoAtencion(
+                        punto_xml.get('id'),
+                        punto_xml.find('nombre').text.strip(),
+                        punto_xml.find('direccion').text.strip()
+                    )
+                    
+                    # Cargar escritorios
+                    for escritorio_xml in punto_xml.find('listaEscritorios').findall('escritorio'):
+                        escritorio = EscritorioServicio(
+                            escritorio_xml.get('id'),
+                            escritorio_xml.find('identificación').text.strip(),
+                            escritorio_xml.find('encargado').text.strip()
+                        )
+                        punto.escritorios.append(escritorio)
+                    
+                    empresa.puntos_atencion.append(punto)
+                
+                # Cargar transacciones
+                for trans_xml in empresa_xml.find('listaTransacciones').findall('transaccion'):
+                    transaccion = Transaccion(
+                        trans_xml.get('id'),
+                        trans_xml.find('nombre').text.strip(),
+                        int(trans_xml.find('tiempoAtencion').text)
+                    )
+                    empresa.transacciones.append(transaccion)
+                
+                self.empresas.append(empresa)
+            
+            return True
+        except Exception as e:
+            messagebox.showerror("Error XML", f"Error al cargar archivo de configuración:\n{str(e)}")
+            return False
+    
+    def cargar_estado_inicial_xml(self, archivo):
+        try:
+            tree = ET.parse(archivo)
+            root = tree.getroot()
+            
+            for config_xml in root.findall('configInicial'):
+                empresa_id = config_xml.get('idEmpresa')
+                punto_id = config_xml.get('idPunto')
+                
+                # Buscar empresa y punto
+                empresa = next((e for e in self.empresas if e.id == empresa_id), None)
+                if not empresa:
+                    continue
+                    
+                punto = next((p for p in empresa.puntos_atencion if p.id == punto_id), None)
+                if not punto:
+                    continue
+                
+                # Activar escritorios
+                for escritorio_xml in config_xml.find('escritoriosActivos').findall('escritorio'):
+                    escritorio_id = escritorio_xml.get('idEscritorio')
+                    escritorio = next((e for e in punto.escritorios if e.id == escritorio_id), None)
+                    if escritorio:
+                        escritorio.activo = True
+                
+                # Cargar clientes
+                for cliente_xml in config_xml.find('listadoClientes').findall('cliente'):
+                    cliente = Cliente(
+                        cliente_xml.get('dpi'),
+                        cliente_xml.find('nombre').text.strip()
+                    )
+                    
+                    # Cargar transacciones del cliente
+                    for trans_xml in cliente_xml.find('listadoTransacciones').findall('transaccion'):
+                        trans_id = trans_xml.get('idTransaction')
+                        cantidad = int(trans_xml.get('cantidad', 1))
+                        
+                        transaccion = next((t for t in empresa.transacciones if t.id == trans_id), None)
+                        if transaccion:
+                            for _ in range(cantidad):
+                                cliente.transacciones.append(transaccion)
+                    
+                    punto.clientes_en_espera.append(cliente)
+            
+            return True
+        except Exception as e:
+            messagebox.showerror("Error XML", f"Error al cargar estado inicial:\n{str(e)}")
+            return False
 
 # ==================== INTERFAZ GRÁFICA ====================
 class MobileAppSimulator:
@@ -110,6 +205,70 @@ class MobileAppSimulator:
         
         # Crear interfaz
         self._create_widgets()
+
+        # Menu Superior
+        self._create_menu()
+
+    def _create_menu(self):
+        menubar = tk.Menu(self.root)
+        
+        # Menú Archivo
+        file_menu = tk.Menu(menubar, tearoff=0)
+        file_menu.add_command(label="Cargar Configuración XML", command=self._load_config_xml)
+        file_menu.add_command(label="Cargar Estado Inicial XML", command=self._load_initial_state_xml)
+        file_menu.add_separator()
+        file_menu.add_command(label="Salir", command=self.root.quit)
+        menubar.add_cascade(label="Archivo", menu=file_menu)
+        
+        self.root.config(menu=menubar)
+    
+    def _load_config_xml(self):
+        filepath = filedialog.askopenfilename(
+            title="Seleccionar archivo de configuración",
+            filetypes=[("XML files", "*.xml")]
+        )
+        if filepath:
+            if self.sistema.cargar_configuracion_xml(filepath):
+                messagebox.showinfo("Éxito", "Configuración cargada correctamente")
+                self._update_ui_after_load()
+    
+    def _load_initial_state_xml(self):
+        filepath = filedialog.askopenfilename(
+            title="Seleccionar archivo de estado inicial",
+            filetypes=[("XML files", "*.xml")]
+        )
+        if filepath:
+            if self.sistema.cargar_estado_inicial_xml(filepath):
+                messagebox.showinfo("Éxito", "Estado inicial cargado correctamente")
+                self._update_ui_after_load()
+    
+    def _update_ui_after_load(self):
+        """Actualiza los combobox después de cargar datos"""
+        if self.sistema.empresas:
+            self.company_combo['values'] = [emp.nombre for emp in self.sistema.empresas]
+            if self.sistema.empresas[0].puntos_atencion:
+                self.point_combo['values'] = [p.nombre for p in self.sistema.empresas[0].puntos_atencion]
+            
+            # Actualizar transacciones
+            for widget in self.transactions_frame.winfo_children():
+                widget.destroy()
+            
+            self.transaction_vars = {}
+            for trans in self.sistema.empresas[0].transacciones:
+                var = tk.IntVar()
+                self.transaction_vars[trans.id] = (var, trans)
+                cb = tk.Checkbutton(
+                    self.transactions_frame, 
+                    text=f"{trans.nombre} ({trans.tiempo} min)", 
+                    variable=var, 
+                    onvalue=1,
+                    offvalue=0,
+                    bg=self.bg_color, 
+                    fg=self.text_color, 
+                    selectcolor=self.secondary_color,
+                    font=('Helvetica', 10)
+                )
+                cb.pack(anchor=tk.W, pady=2)
 
     def _configure_styles(self):
         """Configura los estilos de los widgets."""
