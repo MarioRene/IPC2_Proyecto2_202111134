@@ -19,6 +19,22 @@ class ListaEnlazada:
         self.cabeza = None
         self.longitud = 0
     
+    def __getitem__(self, index):
+        if index >= self.longitud:
+            raise IndexError("Índice fuera de rango")
+        actual = self.cabeza
+        for _ in range(index):
+            actual = actual.siguiente
+        return actual.dato
+
+    def sum(self):
+        total = 0
+        actual = self.cabeza
+        while actual:
+            total += actual.dato
+            actual = actual.siguiente
+        return total
+
     def agregar(self, dato):
         nuevo_nodo = Nodo(dato)
         if not self.cabeza:
@@ -64,6 +80,23 @@ class ListaEnlazada:
             actual = actual.siguiente
         return resultado
 
+    def pop(self, index=0):
+        if index >= self.longitud:
+            raise IndexError("Índice fuera de rango")
+        
+        if index == 0:
+            dato = self.cabeza.dato
+            self.cabeza = self.cabeza.siguiente
+        else:
+            actual = self.cabeza
+            for _ in range(index - 1):
+                actual = actual.siguiente
+            dato = actual.siguiente.dato
+            actual.siguiente = actual.siguiente.siguiente
+        
+        self.longitud -= 1
+        return dato
+
 class NodoDoble:
     def __init__(self, dato):
         self.dato = dato
@@ -101,29 +134,103 @@ class ListaDoblementeEnlazada:
     
     def __len__(self):
         return self.longitud
+    
+    def eliminar_primer_cliente(self):
+        """Elimina y retorna el primer cliente (FIFO)."""
+        if not self.cabeza:
+            return None
+        cliente = self.cabeza.dato
+        self.cabeza = self.cabeza.siguiente
+        if self.cabeza:
+            self.cabeza.anterior = None
+        else:
+            self.cola = None
+        self.longitud -= 1
+        return cliente
+
+    def __getitem__(self, index):
+        if index >= self.longitud:
+            raise IndexError("Índice fuera de rango")
+        
+        if index < self.longitud // 2:
+            actual = self.cabeza
+            for _ in range(index):
+                actual = actual.siguiente
+        else:
+            actual = self.cola
+            for _ in range(self.longitud - 1 - index):
+                actual = actual.anterior
+                
+        return actual.dato
+
+class Par:
+    def __init__(self, clave, valor):
+        self.clave = clave
+        self.valor = valor
 
 class DiccionarioPersonalizado:
-    def __init__(self):
-        self.tabla = [ListaEnlazada() for _ in range(10)]
+    def __init__(self, capacidad=10):
+        self.capacidad = capacidad
+        self.tabla = ListaEnlazada()  # Buckets de ListaEnlazada
         self.tamano = 0
-    
+        for _ in range(capacidad):
+            self.tabla.agregar(ListaEnlazada())  # Inicializar buckets
+
     def _hash(self, clave):
-        return hash(clave) % len(self.tabla)
-    
+        return hash(clave) % self.capacidad
+
     def agregar(self, clave, valor):
         indice = self._hash(clave)
-        for nodo in self.tabla[indice]:
-            if nodo[0] == clave:
-                nodo[1] = valor
+        bucket = self.tabla[indice]
+        
+        # Buscar si la clave ya existe
+        actual = bucket.cabeza
+        while actual:
+            if actual.dato.clave == clave:
+                actual.dato.valor = valor  # Actualizar valor existente
                 return
-        self.tabla[indice].agregar((clave, valor))
+            actual = actual.siguiente
+        
+        # Clave nueva: agregar al bucket
+        bucket.agregar(Par(clave, valor))
         self.tamano += 1
+
+    def obtener(self, clave):
+        bucket = self.tabla[self._hash(clave)]
+        actual = bucket.cabeza
+        while actual:
+            if actual.dato.clave == clave:
+                return actual.dato.valor
+            actual = actual.siguiente
+        raise KeyError(clave)
+
+    def __contains__(self, clave):
+        try:
+            self.obtener(clave)
+            return True
+        except KeyError:
+            return False
+
+    def items(self):
+        items = ListaEnlazada()
+        actual_bucket = self.tabla.cabeza
+        while actual_bucket:
+            actual_elemento = actual_bucket.dato.cabeza
+            while actual_elemento:
+                items.agregar(Par(actual_elemento.dato.clave, actual_elemento.dato.valor))
+                actual_elemento = actual_elemento.siguiente
+            actual_bucket = actual_bucket.siguiente
+        return items
     
     def obtener(self, clave):
         indice = self._hash(clave)
-        for nodo in self.tabla[indice]:
-            if nodo[0] == clave:
-                return nodo[1]
+        lista_bucket = self.tabla[indice]
+        
+        actual = lista_bucket.cabeza
+        while actual:
+            if actual.dato.clave == clave:
+                return actual.dato.valor
+            actual = actual.siguiente
         raise KeyError(clave)
     
     def __contains__(self, clave):
@@ -135,24 +242,36 @@ class DiccionarioPersonalizado:
     
     def items(self):
         items = ListaEnlazada()
-        for lista in self.tabla:
-            for nodo in lista:
-                items.agregar(nodo)
+        # Iteramos a través de todos los buckets
+        actual_bucket = self.tabla.cabeza
+        while actual_bucket:
+            # Iteramos a través de cada elemento en el bucket
+            actual_elemento = actual_bucket.dato.cabeza
+            while actual_elemento:
+                items.agregar(Par(actual_elemento.dato.clave, actual_elemento.dato.valor))
+                actual_elemento = actual_elemento.siguiente
+            actual_bucket = actual_bucket.siguiente
         return items
-
+    
+    def __getitem__(self, clave):
+        return self.obtener(clave)
+    
+    def __setitem__(self, clave, valor):
+        self.agregar(clave, valor)
+    
 class ConjuntoPersonalizado:
     def __init__(self):
-        self.diccionario = DiccionarioPersonalizado()
-    
+        self.diccionario = DiccionarioPersonalizado()  # Usamos nuestro diccionario
+
     def agregar(self, elemento):
-        self.diccionario.agregar(elemento, True)
-    
+        self.diccionario[elemento] = True  # Valor arbitrario (True)
+
     def __contains__(self, elemento):
         return elemento in self.diccionario
-    
+
     def __iter__(self):
-        for clave, _ in self.diccionario.items():
-            yield clave
+        for par in self.diccionario.items():
+            yield par.clave
 
 # ==================== CLASES DEL MODELO (TDA) ====================
 
@@ -202,9 +321,58 @@ class Cliente:
 
 class SistemaAtencion:
     def __init__(self):
-        self.empresas = ListaEnlazada()  
+        self.empresas = ListaEnlazada()
         self.tickets_generados = ConjuntoPersonalizado()
         self.tiempo_simulado = 0
+        self.escritorios_activos = ListaEnlazada()
+
+    def simular_atencion_completa(self, punto_id):
+        """Simula la atención completa de todos los clientes en un punto de atención"""
+        punto, empresa = self._buscar_punto(punto_id)
+        if not punto:
+            raise ValueError("Punto de atención no encontrado")
+        
+        # Avanzar tiempo hasta que no haya clientes en espera
+        while len(punto.clientes_en_espera) > 0:
+            self.avanzar_tiempo(1)  # Avanzar de 1 en 1 minuto
+            
+        # Calcular estadísticas del punto
+        stats_punto = self.calcular_tiempos_punto(punto)
+        
+        # Calcular estadísticas por escritorio
+        stats_escritorios = ListaEnlazada()
+        for escritorio in punto.escritorios:
+            stats = self.calcular_tiempos_escritorio(escritorio)
+            stats_escritorios.agregar({
+                'escritorio': escritorio,
+                'stats': stats
+            })
+        
+        return {
+            'punto': punto,
+            'empresa': empresa,
+            'stats_punto': stats_punto,
+            'stats_escritorios': stats_escritorios
+        }   
+
+    def activar_escritorio(self, escritorio):
+        """Activa un escritorio y lo añade a la pila LIFO."""
+        if not escritorio.activo:
+            escritorio.activo = True
+            self.escritorios_activos.agregar(escritorio)
+            return True
+        return False
+
+    def desactivar_escritorio(self):
+        """Desactiva el último escritorio activado (LIFO)."""
+        if len(self.escritorios_activos) == 0:
+            return None
+        
+        escritorio = self.escritorios_activos[-1]  # Último elemento
+        self.escritorios_activos.cabeza = self.escritorios_activos.cabeza.siguiente  # Eliminar de la pila
+        escritorio.activo = False
+        escritorio.cliente_actual = None
+        return escritorio
 
     def generar_ticket_unico(self):
         while True:
@@ -215,7 +383,12 @@ class SistemaAtencion:
 
     def agregar_empresa(self, empresa):
         # Verificar si la empresa ya existe
-        empresa_existente = next((e for e in self.empresas if e.id == empresa.id), None)
+        empresa_existente = None
+        for e in self.empresas:
+            if e.id == empresa.id:
+                empresa_existente = e
+                break
+        
         if not empresa_existente:
             self.empresas.agregar(empresa)
             return True
@@ -234,7 +407,12 @@ class SistemaAtencion:
                 trans_id = trans_xml.get('idTransaccion')
                 cantidad = int(trans_xml.get('cantidad', 1))
                 
-                transaccion = next((t for t in empresa.transacciones if t.id == trans_id), None)
+                transaccion = None
+                for t in empresa.transacciones:
+                    if t.id == trans_id:
+                        transaccion = t
+                        break
+                
                 if transaccion:
                     for _ in range(cantidad):
                         cliente.transacciones.agregar(transaccion)
@@ -256,14 +434,20 @@ class SistemaAtencion:
         cliente.ticket = self.generar_ticket_unico()
         
         # Calcular tiempo de espera estimado
-        escritorios_activos = [e for e in punto_atencion.escritorios if e.activo]
+        escritorios_activos = ListaEnlazada()
+        for e in punto_atencion.escritorios:
+            if e.activo:
+                escritorios_activos.agregar(e)
         
-        if not escritorios_activos:
-            tiempo_espera = tiempo_total  # Si no hay escritorios activos
+        if len(escritorios_activos) == 0:
+            tiempo_espera = tiempo_total
         else:
             # Calcular carga de trabajo por escritorio
-            carga_escritorios = [sum(c.tiempo_espera for c in punto_atencion.clientes_en_espera) / len(escritorios_activos)]
-            tiempo_espera = max(carga_escritorios) + tiempo_total
+            total_espera = 0
+            for c in punto_atencion.clientes_en_espera:
+                total_espera += c.tiempo_espera
+            carga_promedio = total_espera / len(escritorios_activos)
+            tiempo_espera = carga_promedio + tiempo_total
         
         cliente.tiempo_espera = tiempo_espera
         punto_atencion.clientes_en_espera.agregar(cliente)
@@ -277,72 +461,119 @@ class SistemaAtencion:
         return cliente.ticket, tiempo_espera, tiempo_total
 
     def avanzar_tiempo(self, minutos):
+        if len(self.escritorios_activos) == 0:
+            raise ValueError("No hay escritorios activos para simular.")
+        
         self.tiempo_simulado += minutos
         for empresa in self.empresas:
             for punto in empresa.puntos_atencion:
-                # Avanzar tiempo en escritorios activos
                 for escritorio in punto.escritorios:
                     if escritorio.activo and escritorio.cliente_actual:
                         escritorio.tiempo_restante -= minutos
-                        
                         if escritorio.tiempo_restante <= 0:
-                            # Cliente atendido completamente
                             punto.clientes_atendidos.agregar(escritorio.cliente_actual)
                             escritorio.clientes_atendidos.agregar(escritorio.cliente_actual)
                             escritorio.cliente_actual = None
-                            
-                            # Asignar siguiente cliente si hay
+                            # Asignar siguiente cliente (FIFO)
                             if len(punto.clientes_en_espera) > 0:
                                 siguiente_cliente = punto.clientes_en_espera[0]
                                 punto.clientes_en_espera.cabeza = punto.clientes_en_espera.cabeza.siguiente
-                                if punto.clientes_en_espera.cabeza is None:
-                                    punto.clientes_en_espera.cola = None
                                 self.asignar_cliente_a_escritorio(escritorio, siguiente_cliente)
                 
                 # Actualizar tiempos de espera estimados
-                escritorios_activos = sum(1 for e in punto.escritorios if e.activo)
+                escritorios_activos = 0
+                for e in punto.escritorios:
+                    if e.activo:
+                        escritorios_activos += 1
+                
                 if escritorios_activos > 0:
-                    tiempo_por_escritorio = sum(c.tiempo_espera for c in punto.clientes_en_espera) / escritorios_activos
-                    for i, cliente in enumerate(punto.clientes_en_espera):
+                    total_espera = 0
+                    for c in punto.clientes_en_espera:
+                        total_espera += c.tiempo_espera
+                    tiempo_por_escritorio = total_espera / escritorios_activos
+                    for i in range(len(punto.clientes_en_espera)):
+                        cliente = punto.clientes_en_espera[i]
                         cliente.tiempo_espera = tiempo_por_escritorio * (i + 1)
 
     def calcular_tiempos_punto(self, punto):
-        tiempos_espera = []
-        tiempos_atencion = []
+        tiempos_espera = ListaEnlazada()
+        tiempos_atencion = ListaEnlazada()
         
-        # Recorrer clientes atendidos
         for cliente in punto.clientes_atendidos:
-            tiempos_atencion.append(sum(t.tiempo for t in cliente.transacciones))
+            tiempo = sum(t.tiempo for t in cliente.transacciones)
+            tiempos_atencion.agregar(tiempo)
+            tiempos_espera.agregar(cliente.tiempo_espera - tiempo)
         
-        # Recorrer clientes en espera
         for cliente in punto.clientes_en_espera:
-            tiempos_espera.append(cliente.tiempo_espera)
+            tiempos_espera.agregar(cliente.tiempo_espera)
         
-        # Calcular estadísticas
-        stats = {
-            "max_espera": max(tiempos_espera) if tiempos_espera else 0,
-            "min_espera": min(tiempos_espera) if tiempos_espera else 0,
-            "promedio_espera": sum(tiempos_espera)/len(tiempos_espera) if tiempos_espera else 0,
-            "max_atencion": max(tiempos_atencion) if tiempos_atencion else 0,
-            "min_atencion": min(tiempos_atencion) if tiempos_atencion else 0,
-            "promedio_atencion": sum(tiempos_atencion)/len(tiempos_atencion) if tiempos_atencion else 0,
-            "total_clientes": len(tiempos_atencion)
-        }
+        # Funciones auxiliares para cálculos
+        def maximo(lista):
+            max_val = 0
+            for item in lista:
+                if item > max_val:
+                    max_val = item
+            return max_val
+        
+        def minimo(lista):
+            min_val = float('inf') if len(lista) > 0 else 0
+            for item in lista:
+                if item < min_val:
+                    min_val = item
+            return min_val
+        
+        def promedio(lista):
+            total = 0
+            count = 0
+            for item in lista:
+                total += item
+                count += 1
+            return total / count if count > 0 else 0
+        
+        stats = DiccionarioPersonalizado()
+        stats.agregar("max_espera", maximo(tiempos_espera))
+        stats.agregar("min_espera", minimo(tiempos_espera))
+        stats.agregar("promedio_espera", promedio(tiempos_espera))
+        stats.agregar("max_atencion", maximo(tiempos_atencion))
+        stats.agregar("min_atencion", minimo(tiempos_atencion))
+        stats.agregar("promedio_atencion", promedio(tiempos_atencion))
+        stats.agregar("total_clientes", len(tiempos_atencion))
         
         return stats
 
     def calcular_tiempos_escritorio(self, escritorio):
-        tiempos = []
+        tiempos = ListaEnlazada()
         
         for cliente in escritorio.clientes_atendidos:
-            tiempos.append(sum(t.tiempo for t in cliente.transacciones))
+            tiempos.agregar(sum(t.tiempo for t in cliente.transacciones))
+
+        def maximo(lista):
+            max_val = 0
+            for item in lista:
+                if item > max_val:
+                    max_val = item
+            return max_val
         
-        stats = {
-            "max_atencion": max(tiempos) if tiempos else 0,
-            "min_atencion": min(tiempos) if tiempos else 0,
-            "promedio_atencion": sum(tiempos)/len(tiempos) if tiempos else 0,
-            "total_clientes": len(tiempos)
-        }
+        def minimo(lista):
+            min_val = float('inf') if len(lista) > 0 else 0
+            for item in lista:
+                if item < min_val:
+                    min_val = item
+            return min_val
+        
+        def promedio(lista):
+            total = 0
+            count = 0
+            for item in lista:
+                total += item
+                count += 1
+            return total / count if count > 0 else 0
+        
+        stats = DiccionarioPersonalizado()
+        stats.agregar("max_atencion", maximo(tiempos))
+        stats.agregar("min_atencion", minimo(tiempos))
+        stats.agregar("promedio_atencion", promedio(tiempos))
+        stats.agregar("total_clientes", len(tiempos))
         
         return stats
 
@@ -357,7 +588,11 @@ class SistemaAtencion:
             for empresa_xml in root.findall('empresa'):
                 empresa_id = empresa_xml.get('id')
                 # Verificar si la empresa ya existe
-                empresa_existente = next((e for e in self.empresas if e.id == empresa_id), None)
+                empresa_existente = None
+                for e in self.empresas:
+                    if e.id == empresa_id:
+                        empresa_existente = e
+                        break
                 
                 if empresa_existente:
                     # Actualizar datos de empresa existente
@@ -379,7 +614,11 @@ class SistemaAtencion:
                     for punto_xml in puntos.findall('puntoAtencion'):
                         punto_id = punto_xml.get('id')
                         # Verificar si el punto ya existe
-                        punto_existente = next((p for p in empresa.puntos_atencion if p.id == punto_id), None)
+                        punto_existente = None
+                        for p in empresa.puntos_atencion:
+                            if p.id == punto_id:
+                                punto_existente = p
+                                break
                         
                         if punto_existente:
                             # Actualizar punto existente
@@ -401,7 +640,11 @@ class SistemaAtencion:
                             for esc_xml in escritorios.findall('escritorio'):
                                 esc_id = esc_xml.get('id')
                                 # Verificar si el escritorio ya existe
-                                esc_existente = next((e for e in punto.escritorios if e.id == esc_id), None)
+                                esc_existente = None
+                                for e in punto.escritorios:
+                                    if e.id == esc_id:
+                                        esc_existente = e
+                                        break
                                 
                                 if esc_existente:
                                     # Actualizar escritorio existente
@@ -423,7 +666,11 @@ class SistemaAtencion:
                     for trans_xml in transacciones.findall('transaccion'):
                         trans_id = trans_xml.get('id')
                         # Verificar si la transacción ya existe
-                        trans_existente = next((t for t in empresa.transacciones if t.id == trans_id), None)
+                        trans_existente = None
+                        for t in empresa.transacciones:
+                            if t.id == trans_id:
+                                trans_existente = t
+                                break
                         
                         if trans_existente:
                             # Actualizar transacción existente
@@ -461,38 +708,48 @@ class SistemaAtencion:
                 empresa_id = config_xml.get('idEmpresa')
                 punto_id = config_xml.get('idPunto')
                 
-                empresa = next((e for e in self.empresas if e.id == empresa_id), None)
+                empresa = None
+                for e in self.empresas:
+                    if e.id == empresa_id:
+                        empresa = e
+                        break
                 if not empresa:
                     continue
                     
-                punto = next((p for p in empresa.puntos_atencion if p.id == punto_id), None)
+                punto = None
+                for p in empresa.puntos_atencion:
+                    if p.id == punto_id:
+                        punto = p
+                        break
                 if not punto:
                     continue
                 
-                # Activar escritorios
-                escritorios_activos = []
+                # Cargar escritorios activos
+                escritorios_activos = ListaEnlazada()
                 escritorios_xml = config_xml.find('escritoriosActivos')
                 if escritorios_xml is not None:
                     for esc_xml in escritorios_xml.findall('escritorio'):
                         esc_id = esc_xml.get('idEscritorio')
-                        escritorio = next((e for e in punto.escritorios if e.id == esc_id), None)
-                        if escritorio:
-                            escritorio.activo = True
-                            escritorios_activos.append(escritorio)
+                        for e in punto.escritorios:
+                            if e.id == esc_id:
+                                e.activo = True
+                                escritorios_activos.agregar(e)
+                                self.escritorios_activos.agregar(e)  # Añadir a la pila de activos
+                                break
                 
-                # Cargar y distribuir clientes
+                # Cargar clientes solo si hay escritorios activos
                 clientes_xml = config_xml.find('listadoClientes')
-                if clientes_xml is not None and escritorios_activos:
+                if clientes_xml is not None and len(escritorios_activos) > 0:
                     for i, cliente_xml in enumerate(clientes_xml.findall('cliente')):
                         cliente = self._crear_cliente_desde_xml(cliente_xml, empresa)
                         punto.clientes_en_espera.agregar(cliente)
-                        
-                        # Distribuir cliente a escritorio (round-robin)
                         escritorio_asignado = escritorios_activos[i % len(escritorios_activos)]
                         self.asignar_cliente_a_escritorio(escritorio_asignado, cliente)
+                
+                # Solo avanzar tiempo si hay clientes y escritorios activos
+                if len(punto.clientes_en_espera) > 0 and len(escritorios_activos) > 0:
+                    self.avanzar_tiempo(0)
             
-            # Avanzar tiempo para procesar la configuración inicial
-            self.avanzar_tiempo(0)
             return True
             
         except Exception as e:
@@ -500,7 +757,11 @@ class SistemaAtencion:
             return False
 
     def generar_reporte_empresa(self, empresa_id):
-        empresa = next((e for e in self.empresas if e.id == empresa_id), None)
+        empresa = None
+        for e in self.empresas:
+            if e.id == empresa_id:
+                empresa = e
+                break
         if not empresa:
             return None
             
@@ -602,13 +863,18 @@ class SistemaAtencion:
         if len(punto.clientes_en_espera) > 0:
             with dot.subgraph(name='cluster_cola') as c:
                 c.attr(label='Clientes en Espera', color='#8a6dae')
-                for i, cliente in enumerate(punto.clientes_en_espera):
-                    transacciones = "\n".join([f"• {t.nombre} ({t.tiempo} min)" for t in cliente.transacciones])
+                for i in range(len(punto.clientes_en_espera)):
+                    cliente = punto.clientes_en_espera[i]
+                    transacciones = ListaEnlazada()
+                    for t in cliente.transacciones:
+                        transacciones.agregar(f"• {t.nombre} ({t.tiempo} min)")
+                    
+                    trans_text = "\n".join(transacciones)
                     c.node(f'c{i}',
                           f'<<B>Cliente:</B> {cliente.nombre}\n'
                           f'<B>Ticket:</B> {cliente.ticket}\n'
                           f'<B>Tiempo estimado:</B> {cliente.tiempo_espera} min\n'
-                          f'<B>Transacciones:</B>\n{transacciones}>',
+                          f'<B>Transacciones:</B>\n{trans_text}>',
                           shape='box', style='rounded,filled', fillcolor='#d9c2ff')
                     if i > 0:
                         c.edge(f'c{i-1}', f'c{i}')
@@ -628,6 +894,7 @@ class SistemaAtencion:
         self.empresas = ListaEnlazada()
         self.tickets_generados = ConjuntoPersonalizado()
         self.tiempo_simulado = 0
+        self.escritorios_activos = ListaEnlazada()
 
 # ==================== INTERFAZ GRÁFICA ====================
 class MobileAppSimulator:
@@ -673,7 +940,7 @@ class MobileAppSimulator:
     def _create_menu(self):
         menubar = tk.Menu(self.root)
         
-            # Menú Archivo
+        # Menú Archivo
         file_menu = tk.Menu(menubar, tearoff=0)
         file_menu.add_command(label="Cargar Configuración XML", command=self._load_config_xml)
         file_menu.add_command(label="Cargar Estado Inicial XML", command=self._load_initial_state_xml)
@@ -749,7 +1016,12 @@ Enlace a la documentación: https://github.com/MarioRene/IPC2_Proyecto2_20211113
                 return
                 
             # Verificar si la empresa ya existe
-            empresa_existente = next((e for e in self.sistema.empresas if e.id == id_empresa), None)
+            empresa_existente = None
+            for e in self.sistema.empresas:
+                if e.id == id_empresa:
+                    empresa_existente = e
+                    break
+                    
             if empresa_existente:
                 messagebox.showerror("Error", f"Ya existe una empresa con ID {id_empresa}")
                 return
@@ -777,8 +1049,11 @@ Enlace a la documentación: https://github.com/MarioRene/IPC2_Proyecto2_20211113
         tk.Label(dialog, text="Seleccione la empresa:").pack(pady=(10, 0))
         
         empresa_var = tk.StringVar()
-        empresas = [emp.nombre for emp in self.sistema.empresas]
-        empresa_combobox = ttk.Combobox(dialog, textvariable=empresa_var, values=empresas, state="readonly")
+        empresas = ListaEnlazada()
+        for emp in self.sistema.empresas:
+            empresas.agregar(emp.nombre)
+            
+        empresa_combobox = ttk.Combobox(dialog, textvariable=empresa_var, values=list(empresas), state="readonly")
         empresa_combobox.pack(pady=5)
         empresa_combobox.current(0)
         
@@ -805,13 +1080,23 @@ Enlace a la documentación: https://github.com/MarioRene/IPC2_Proyecto2_20211113
                 return
                 
             # Buscar la empresa seleccionada
-            empresa = next((e for e in self.sistema.empresas if e.nombre == empresa_nombre), None)
+            empresa = None
+            for e in self.sistema.empresas:
+                if e.nombre == empresa_nombre:
+                    empresa = e
+                    break
+                    
             if not empresa:
                 messagebox.showerror("Error", "Empresa no encontrada")
                 return
                 
             # Verificar si el punto ya existe
-            punto_existente = next((p for p in empresa.puntos_atencion if p.id == id_punto), None)
+            punto_existente = None
+            for p in empresa.puntos_atencion:
+                if p.id == id_punto:
+                    punto_existente = p
+                    break
+                    
             if punto_existente:
                 messagebox.showerror("Error", f"Ya existe un punto con ID {id_punto} en esta empresa")
                 return
@@ -839,8 +1124,11 @@ Enlace a la documentación: https://github.com/MarioRene/IPC2_Proyecto2_20211113
         tk.Label(dialog, text="Seleccione la empresa:").pack(pady=(10, 0))
         
         empresa_var = tk.StringVar()
-        empresas = [emp.nombre for emp in self.sistema.empresas]
-        empresa_combobox = ttk.Combobox(dialog, textvariable=empresa_var, values=empresas, state="readonly")
+        empresas = ListaEnlazada()
+        for emp in self.sistema.empresas:
+            empresas.agregar(emp.nombre)
+            
+        empresa_combobox = ttk.Combobox(dialog, textvariable=empresa_var, values=list(empresas), state="readonly")
         empresa_combobox.pack(pady=5)
         empresa_combobox.current(0)
         empresa_combobox.bind("<<ComboboxSelected>>", lambda e: self._actualizar_puntos_combobox(dialog, empresa_var.get()))
@@ -850,7 +1138,7 @@ Enlace a la documentación: https://github.com/MarioRene/IPC2_Proyecto2_20211113
         self.punto_var = tk.StringVar()
         self.punto_combobox = ttk.Combobox(dialog, textvariable=self.punto_var, state="readonly")
         self.punto_combobox.pack(pady=5)
-        self._actualizar_puntos_combobox(dialog, empresas[0])
+        self._actualizar_puntos_combobox(dialog, self.sistema.empresas[0].nombre if len(self.sistema.empresas) > 0 else "")
         
         tk.Label(dialog, text="ID del Escritorio:").pack()
         id_entry = tk.Entry(dialog)
@@ -876,18 +1164,33 @@ Enlace a la documentación: https://github.com/MarioRene/IPC2_Proyecto2_20211113
                 return
                 
             # Buscar la empresa y punto seleccionados
-            empresa = next((e for e in self.sistema.empresas if e.nombre == empresa_nombre), None)
+            empresa = None
+            for e in self.sistema.empresas:
+                if e.nombre == empresa_nombre:
+                    empresa = e
+                    break
+                    
             if not empresa:
                 messagebox.showerror("Error", "Empresa no encontrada")
                 return
                 
-            punto = next((p for p in empresa.puntos_atencion if p.nombre == punto_nombre), None)
+            punto = None
+            for p in empresa.puntos_atencion:
+                if p.nombre == punto_nombre:
+                    punto = p
+                    break
+                    
             if not punto:
                 messagebox.showerror("Error", "Punto de atención no encontrado")
                 return
                 
             # Verificar si el escritorio ya existe
-            escritorio_existente = next((e for e in punto.escritorios if e.id == id_escritorio), None)
+            escritorio_existente = None
+            for e in punto.escritorios:
+                if e.id == id_escritorio:
+                    escritorio_existente = e
+                    break
+                    
             if escritorio_existente:
                 messagebox.showerror("Error", f"Ya existe un escritorio con ID {id_escritorio} en este punto")
                 return
@@ -903,11 +1206,19 @@ Enlace a la documentación: https://github.com/MarioRene/IPC2_Proyecto2_20211113
         tk.Button(dialog, text="Guardar", command=guardar_escritorio).pack(pady=10)
 
     def _actualizar_puntos_combobox(self, dialog, empresa_nombre):
-        empresa = next((e for e in self.sistema.empresas if e.nombre == empresa_nombre), None)
+        empresa = None
+        for e in self.sistema.empresas:
+            if e.nombre == empresa_nombre:
+                empresa = e
+                break
+                
         if empresa:
-            puntos = [p.nombre for p in empresa.puntos_atencion]
-            self.punto_combobox['values'] = puntos
-            if puntos:
+            puntos = ListaEnlazada()
+            for p in empresa.puntos_atencion:
+                puntos.agregar(p.nombre)
+                
+            self.punto_combobox['values'] = list(puntos)
+            if len(puntos) > 0:
                 self.punto_combobox.current(0)
 
     def _save_config_xml(self):
@@ -961,8 +1272,11 @@ Enlace a la documentación: https://github.com/MarioRene/IPC2_Proyecto2_20211113
                 messagebox.showerror("Error", f"No se pudo guardar la configuración:\n{str(e)}")
 
     def _simular_tiempo(self, minutos):
-        self.sistema.avanzar_tiempo(minutos)
-        messagebox.showinfo("Simulación", f"Se avanzó {minutos} minutos en la simulación")
+        try:
+            self.sistema.avanzar_tiempo(minutos)
+            messagebox.showinfo("Simulación", f"Se avanzó {minutos} minutos.")
+        except ValueError as e:
+            messagebox.showerror("Error", str(e))
         self._update_ui_after_load()
 
     def _limpiar_todo(self):
@@ -1006,7 +1320,8 @@ Enlace a la documentación: https://github.com/MarioRene/IPC2_Proyecto2_20211113
                 if len(punto.clientes_en_espera) > 0:
                     with dot.subgraph(name=f'cluster_{punto.id}') as c:
                         c.attr(label=f'{empresa.nombre} - {punto.nombre}', color='#8a6dae')
-                        for i, cliente in enumerate(punto.clientes_en_espera):
+                        for i in range(len(punto.clientes_en_espera)):
+                            cliente = punto.clientes_en_espera[i]
                             c.node(f'{punto.id}_c{i}',
                                   f'<{cliente.nombre}\nTicket: {cliente.ticket}\nTiempo: {cliente.tiempo_espera} min>',
                                   shape='box', style='filled', fillcolor='#d9c2ff')
@@ -1097,7 +1412,11 @@ Enlace a la documentación: https://github.com/MarioRene/IPC2_Proyecto2_20211113
         
         # Actualizar con nuevos datos si existen
         if len(self.sistema.empresas) > 0:
-            self.company_combo['values'] = [emp.nombre for emp in self.sistema.empresas]
+            empresas = ListaEnlazada()
+            for emp in self.sistema.empresas:
+                empresas.agregar(emp.nombre)
+                
+            self.company_combo['values'] = list(empresas)
             self.company_combo.current(0)
             self._update_points_combo()
             
@@ -1191,11 +1510,19 @@ Enlace a la documentación: https://github.com/MarioRene/IPC2_Proyecto2_20211113
         if not empresa_nombre:
             return
             
-        empresa = next((emp for emp in self.sistema.empresas if emp.nombre == empresa_nombre), None)
+        empresa = None
+        for emp in self.sistema.empresas:
+            if emp.nombre == empresa_nombre:
+                empresa = emp
+                break
+                
         if empresa:
-            puntos = [p.nombre for p in empresa.puntos_atencion]
-            self.point_combo['values'] = puntos
-            if puntos:
+            puntos = ListaEnlazada()
+            for p in empresa.puntos_atencion:
+                puntos.agregar(p.nombre)
+                
+            self.point_combo['values'] = list(puntos)
+            if len(puntos) > 0:
                 self.point_combo.current(0)
 
     def _create_transaction_controls(self):
@@ -1256,20 +1583,22 @@ Enlace a la documentación: https://github.com/MarioRene/IPC2_Proyecto2_20211113
             cliente.transacciones.agregar(trans)
         
         # Buscar la empresa seleccionada
-        empresa_seleccionada = next(
-            (emp for emp in self.sistema.empresas if emp.nombre == self.company_combo.get()),
-            None
-        )
+        empresa_seleccionada = None
+        for emp in self.sistema.empresas:
+            if emp.nombre == self.company_combo.get():
+                empresa_seleccionada = emp
+                break
         
         if not empresa_seleccionada:
             messagebox.showerror("Error", "Empresa no encontrada")
             return None, 0, 0
             
         # Buscar el punto de atención seleccionado
-        punto = next(
-            (p for p in empresa_seleccionada.puntos_atencion if p.nombre == self.point_combo.get()),
-            None
-        )
+        punto = None
+        for p in empresa_seleccionada.puntos_atencion:
+            if p.nombre == self.point_combo.get():
+                punto = p
+                break
         
         if not punto:
             messagebox.showerror("Error", "Punto de atención no encontrado")
@@ -1311,10 +1640,9 @@ Enlace a la documentación: https://github.com/MarioRene/IPC2_Proyecto2_20211113
             foreground=self.accent_color
         ).pack(pady=(0, 20))
         
-        time_labels = [
-            ("Tiempo estimado de espera:", wait_time),
-            ("Tiempo estimado de atención:", service_time)
-        ]
+        time_labels = ListaEnlazada()
+        time_labels.agregar(("Tiempo estimado de espera:", wait_time))
+        time_labels.agregar(("Tiempo estimado de atención:", service_time))
         
         for label, time in time_labels:
             ttk.Label(
